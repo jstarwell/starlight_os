@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+.standard_display,.standard.small.commodity.graphic.display {
+width: 162px;
+height: 130px;
+// background-color: black;
+}
+</style>
+</head>
+<body>
+
+<div id="display"></div>
+
+<script>
+// implementation chosen to efficiently handle the absurdly-many-children case
+function lib_clear_element_contents(elem) { elem.innerHTML = ''; }
+
+function lib_scale_sz(sz, n) {return{width:sz.width*n, height:sz.height*n}; }
+function lib_scale_pt(pt, n) {return {x:sz.x*n, y:sz.y*n}; }
+function lib_offset_pt_by_pt(pt, off_pt) {return {
+	x:pt.x+off_pt.x, y:pt.y+off_pt.y}; }
+function lib_offset_pt_by_sz(pt, sz) {return {
+	x:pt.x+sz.width, y:pt.y+sz.height}; }
+function lib_scale_pt_by_sz(pt, sz) {
+	return {x:pt.x*sz.width, y:pt.y*sz.height}; }
+function lib_scale_sz_by_sz(sz, sz_scale) {
+	return {
+		width:sz.width*sz_scale.width,
+		height:sz.height*sz_scale.height}; }
+function lib_div_sz_by_sz(sz, sz_scale) {
+	return {
+		width:sz.width/sz_scale.width,
+		height:sz.height/sz_scale.height}; }
+function lib_div_pt_by_sz(pt, sz_scale) {
+	return {
+		x:pt.x/sz_scale.width,
+		y:pt.y/sz_scale.height}; }
+function lib_pad_sz_by_n(sz, n) {
+	return {width:sz.width+2*n,height:sz.height+2*n}; }
+
+</script>
+
+<script>
+
+var disp_size = {width: 160, height: 128};
+var disp_zoom = 4;
+var disp_zoomed_size = lib_scale_sz(disp_size, disp_zoom);
+
+var disp_char_size = {width: 8, height: 8};
+
+var disp_csize = lib_div_sz_by_sz(disp_size, disp_char_size);
+
+var disp_center_pix_pt = {x: disp_size.width/2, y: disp_size.height/2};
+var disp_center_pt = lib_div_pt_by_sz(disp_center_pix_pt, disp_char_size);
+
+var disp_default_color = "red";
+var disp_default_dim_color = "#300000";
+var disp_default_background_color = "black";
+var disp_invert_colors = false;
+
+function sys_get_display() { return document.getElementById("display"); }
+function sys_set_ctx_draw_color(ctx, color) {
+	ctx.strokeStyle = color;
+	ctx.fillStyle = color;
+
+}
+function sys_get_display_context() { 
+	var disp = sys_get_display();
+	var canv = disp.getElementsByTagName("canvas")[0];
+	var ctx = canv.getContext("2d");
+
+	sys_set_ctx_draw_color(ctx, disp_default_color);
+	ctx.font="8px Courier";
+
+	ctx.textBaseline="middle";
+	ctx.textAlign="center";
+
+	// ctx state persists therefore scale() compounds
+	// so reset transform
+	ctx.setTransform(1, 0, 0, 1, 0, 0);
+	ctx.scale(disp_zoom, disp_zoom);
+
+	ctx.lineWidth = disp_char_size.width;
+
+	return ctx;
+}
+
+function sys_disp_pix_center_at_pt(pt) {
+	var pix_pt = lib_scale_pt_by_sz(pt, disp_char_size);
+	pix_pt.x += disp_char_size.width/2;
+	pix_pt.y += disp_char_size.height/2;
+	return pix_pt;
+}
+
+</script>
+
+
+
+<script>
+
+function draw_arc(pt, r, options) {
+	var ctx = sys_get_display_context();
+
+	var pix_pt = lib_scale_pt_by_sz(pt, disp_char_size);
+	var pix_r = r * disp_char_size.width;
+
+	pix_pt = sys_disp_pix_center_at_pt(pt);
+
+	if(options.span == null) options.span = 1;
+
+	ctx.beginPath();
+	ctx.arc(pix_pt.x, pix_pt.y, pix_r, 0, options.span*2*Math.PI);
+	ctx.stroke();
+}
+
+function draw_char(pt, chr, options) {
+	var chr0 = chr[0];
+
+	var pix_pt = sys_disp_pix_center_at_pt(pt);
+
+	var ctx = sys_get_display_context();
+
+	//var metrics = ctx.measureText(chr0);
+	if(options != null) {
+		if(options.color != null) sys_set_ctx_draw_color(ctx, options.color);
+		if(options.dim != null) sys_set_ctx_draw_color(ctx, disp_default_dim_color);
+	}
+
+	ctx.fillText(chr0, pix_pt.x, pix_pt.y);
+}
+
+function draw_str(pt, str, options) {
+	for(var ix = 0; ix < str.length; ix++) {
+		var pti = {x:pt.x+ix, y:pt.y};
+		draw_char(pti, str[ix], options);
+	}
+}
+
+
+////////////////
+
+var sub_frames_per_frame = 2;
+// init
+
+var sys = null;
+
+var keys = {
+enter: "enter",
+delete: "backspace",
+};
+
+var block_glyph = String.fromCharCode(0x2588);
+var prompt_glyph = ">";
+
+function draw_char_grid() {
+	for(var iy = 0; iy < disp_csize.height; iy++) {
+		for(var ix = 0; ix < disp_csize.width; ix++) {
+			draw_char({x:ix,y:iy},
+				block_glyph, {dim:true});
+		}
+	}
+}
+
+function draw_logo(t) {
+
+	//draw_char_grid();
+
+	for(var i = 1; i < 8-1; i+=2) {
+		var frac = i/8;
+		draw_arc(disp_center_pt,disp_csize.height*frac/2,{span:0.75*t});
+	}
+
+	var p = lib_offset_pt_by_pt(disp_center_pt, {x:1,y:-2});
+	draw_str(p, "STARLIGHT");
+	p = lib_offset_pt_by_pt(p, {x:0,y:1});
+	draw_str(p, "SYSTEMS");
+}
+
+
+function ease_in(t) { return ( Math.pow(10*t,3) )/1000; }
+function ease_out(t) { return 1 - ( (Math.pow(10*(1-t),3) )/1000 ); }
+
+function disp_clear() {
+	var ctx = sys_get_display_context();
+	ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+}
+
+function run_program(pg) {
+	var env_ = {frame: 0, sub_frame: 0, next:{}, state:{}};
+	var proc = {name:pg.name, env: env_, progfn:pg.progfn,status:"running"};
+	sys.procs.push(proc);
+	return proc;
+}
+
+function step_process(proc) {
+	var env = proc.env;
+
+	env.next.advance_frame = true;
+
+	env.events = sys.events;
+
+	proc.progfn(env);
+
+	if(env.next.advance_frame) {
+		env.sub_frame++;
+		if(env.sub_frame == sub_frames_per_frame) {
+			env.sub_frame = 0;
+			env.frame++;
+		}
+	}
+}
+
+function sys_reset() { sys_init(); }
+
+function shell_command(cmd_str) {
+	var cmd_words = cmd_str.split(" ");
+	var op = cmd_words[0];
+	var arg = cmd_words[1];
+
+	if(op == "reset") sys_reset();
+	else if(op == "endid") end_process_id(parseInt(arg));
+	else if(op == "end") end_processes_of_name(arg);
+	else if(op == "run") run_program(sys.programs[arg]);
+	else if(op == "procs") {
+		for(var i = 0; i < sys.procs.length; i++) {
+			console.log(i, sys.procs[i]);
+		}
+	}
+	else if(op == "progs") {
+		for(var key in sys.programs) {
+			console.log(key, sys.programs[key]);
+		}
+	}
+}
+
+function shell_program(env) {
+
+	if(env.state.cmd_str == null) env.state.cmd_str = "";
+
+	var curs_pt = {x:0, y:disp_csize.height-1};
+
+	draw_char(curs_pt, prompt_glyph);
+	curs_pt = lib_offset_pt_by_pt(curs_pt, {x:1,y:0});
+
+	var blink_on = ( (env.frame % 20) > 10 );
+	var blink_on = true;
+	var color = blink_on ? disp_default_color : disp_default_dim_color;
+
+
+	draw_str(curs_pt, env.state.cmd_str);
+	curs_pt.x += env.state.cmd_str.length;
+
+	draw_char(curs_pt, block_glyph, {color:color});
+
+
+	if(env.events.keypress) {
+		var evts = env.events.keypress;
+		for(var i = 0; i < evts.length; i++) {
+			var e = evts[i];
+			if(e.key == keys.enter) {
+				shell_command(env.state.cmd_str);
+				env.state.cmd_str = "";
+			}
+			else if(e.key == keys.delete) {
+				if(env.state.cmd_str.length > 0) {
+				env.state.cmd_str = env.state.cmd_str.slice(0,-1);
+				}
+			}
+			else if(e.char != null) env.state.cmd_str += e.char;
+		}
+	}
+}
+
+function logo_program(env) {
+	var logo_t = 1;
+	var logo_ani_frames = 32;
+	var logo_hold_frames = 8;
+
+	if(env.frame < logo_ani_frames) { logo_t = env.frame/logo_ani_frames; }
+	else env.next.advance_frame = false;
+
+	logo_t = ease_out(logo_t);
+	draw_logo(logo_t);
+}
+
+function end_process_id(proc_id) {
+	sys.procs[proc_id].status = "ended";
+}
+
+function end_processes_of_name(proc_name) {
+	for(var i = 0; i < sys.procs.length; i++) {
+		var p = sys.procs[i];
+		if(p.name == proc_name) end_process_id(i);
+	}
+}
+
+function sys_post_event(evt) {
+	if(sys.events[evt.type] == null) sys.events[evt.type] = [];
+	sys.events[evt.type].push(evt);
+}
+
+function sys_frame() {
+
+	disp_clear();
+
+	draw_char_grid();
+
+	for(var i = 0; i < sys.procs.length; i++) {
+		var proc = sys.procs[i];
+		//console.log(proc);
+		if(proc.status == "running") step_process(proc);
+	}
+
+	sys.events = {};
+}
+
+function sys_add_event_listener(target_, event_type_, fn_, opts_) {
+	var lis = {target:target_, event_type:event_type_, fn:fn_, opts:opts_};
+
+	lis.target.addEventListener(lis.event_type, lis.fn, lis.opts);
+
+	sys.listeners.push(lis);
+}
+
+function sys_clear_listeners() {
+	if(sys.listeners != null) {
+		for(var i = 0; i < sys.listeners.length; i++) {
+			var lis = sys.listeners[i];
+			lis.target.removeEventListener(lis.event_type, lis.fn, lis.opts);
+		}
+	}
+
+	sys.listeners = [];
+}
+
+function sys_add_program(pg) {
+	sys.programs[pg.name] = pg;
+}
+
+function sys_load_rom() {
+	sys_add_program({name: "logo", progfn: logo_program});
+	sys_add_program({name: "shell", progfn: shell_program});
+}
+
+function sys_init() {
+
+
+	if(sys == null) sys = {};
+
+	sys.programs = {};
+	sys.procs = [];
+	sys.events = {};
+
+	sys_clear_listeners();
+
+	//////
+
+	sys_load_rom();
+
+	///////
+
+	var disp = sys_get_display();
+	var disp_tag_size = lib_pad_sz_by_n(disp_zoomed_size, 1);
+	disp.style.setProperty("width", disp_tag_size.width.toString()+"px");
+	disp.style.setProperty("height", disp_tag_size.height.toString()+"px");
+	disp.style.setProperty("border", "solid gray 1px");
+
+	disp.setAttribute("tabIndex", "0");
+	disp.focus();
+
+	if(disp_invert_colors) {
+		var t_color = disp_default_background_color;
+		disp_default_background_color = disp_default_color;;
+		disp_default_color = t_color;
+	}
+
+	var disp_canvas = document.createElement("canvas");
+	disp_canvas.width = disp_zoomed_size.width;
+	disp_canvas.height = disp_zoomed_size.height;
+	//disp_canvas.style.setProperty("width", disp_zoomed_size.width);
+	//disp_canvas.style.setProperty("height", disp_zoomed_size.height);
+	disp_canvas.style.setProperty("border", "solid red 1px");
+	disp_canvas.style.setProperty("background-color",
+		disp_default_background_color);
+
+
+	sys_add_event_listener(disp, "keydown", function(host_evt) {
+		// host_evt.preventDefault();
+		// host_evt.stopPropagation();
+
+		var evt = {type:"keypress", key:host_evt.key.toLowerCase()};
+		if(evt.key.length == 1) evt.char = evt.key;
+
+		sys_post_event(evt);
+	});
+
+	lib_clear_element_contents(disp);
+	disp.appendChild(disp_canvas);
+
+
+
+	//////
+
+	run_program(sys.programs["logo"]);
+	run_program(sys.programs["shell"]);
+
+	//////
+
+	if(sys.video_refresh == null) {
+		function animationLoop() {
+			sys_frame();
+			window.requestAnimationFrame(animationLoop);
+		}
+		window.requestAnimationFrame(animationLoop);
+		sys.video_refresh = true;
+	}
+}
+
+sys_init();
+
+</script>
+
+</body>
+</html>
+
